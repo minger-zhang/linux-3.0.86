@@ -313,6 +313,55 @@ static int elan_mt_send_get_data(struct elan_ts_data *ts, const uint8_t *wbuf,
 	return ACK_OK;
 }
 
+static int disable_finger_report(struct elan_ts_data *ts, int mode)
+{
+	const uint8_t check_report_mode[HID_CMD_LEN] = {0x04,0x00,0x23,0x00,0x03,0x00,0x04,0x53,0xCA,0x00,0x01};
+	uint8_t set_finger_cmd[HID_CMD_LEN] = {0x04,0x00,0x23,0x00,0x03,0x00,0x04,0x54,0xCA,0x00,0x01};
+	uint8_t rbuf[67] = {0x00};
+	int retry = 3;
+	int ret = ACK_OK;
+	
+	/*read current report mode : disable->buf[]*/
+	ret = elan_mt_send_get_data(ts, check_report_mode, sizeof(check_report_mode), rbuf, sizeof(rbuf));
+	if (ret) 
+		return ERR_DEVACK;
+	else
+		printk("[elan]\t\t\t%s report mode:%s\n",__func__,rbuf[7] == 0x00 ? "Enable Report":"Disable Report");
+
+	if (mode == rbuf[7]) {
+		printk("[elan]\t\t%s needn't seting report mode, current mode = %s\n",__func__, mode == 0? "Enable Report": "Disable Report");
+		return ACK_OK;
+	} else {
+
+retry_set:
+		set_finger_cmd[10] = mode; 
+		ret = ts->ops->send(set_finger_cmd, sizeof(set_finger_cmd));
+		if (ret != sizeof(set_finger_cmd)) {
+			return ERR_I2CWRITE;
+		} else {
+			ret = elan_mt_send_get_data(ts, check_report_mode, sizeof(check_report_mode), rbuf, sizeof(rbuf));
+			if (ret) {
+				if ((retry--) < 0)
+					return ERR_DEVACK;
+				else 
+					goto retry_set;
+			} else {
+				if (mode == rbuf[7]) {
+					return ACK_OK;
+				} else {
+					if ((retry--) < 0) {
+						printk("[elan]\t\t%s try set report mode failed retry count out of range\n",__func__);
+						return -1;
+					} else {
+						goto retry_set;
+					}
+				}
+			}
+		}
+	}
+
+}
+
 static int alloc_data_buf(struct elan_ts_data *ts)
 {
 
@@ -1277,6 +1326,11 @@ static int tp_module_test_init(struct elan_ts_data *ts)
 	ret =  __fw_packet_handler(ts->client);
 	if (ret)
 		return ERR_DEVSTATUS;
+
+	/*disable report*/
+	ret = disable_finger_report(ts,1);
+	if (ret)
+		return ERR_DISABLEREPOR;
 
 	/*step 2: alloc buff*/
 	printk("[elan]\t\t%s stage1: alloc data buf\n\n",__func__);

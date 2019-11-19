@@ -1223,27 +1223,19 @@ static int elan_ts_setup(struct elan_ts_data *ts)
 
 int elan_iap_open(struct inode *inode, struct file *filp)
 {
-
-	struct elan_ts_data *ts = container_of((struct miscdevice *)filp->private_data, struct elan_ts_data, firmware);	
-    //struct elan_ts_data *ts = container_of(inode->i_cdev, struct elan_ts_data, firmware);	
+	struct elan_ts_data *ts = container_of(((struct miscdevice*)filp->private_data), struct elan_ts_data, firmware);	
+    
+	dev_dbg(&ts->client->dev,"%s enter\n", __func__);
 	
-	if (ts == NULL)
-		return -1;
-	else
-		filp->private_data = ts;	
+	filp->private_data = ts;	
 	
-    dev_info(&private_ts->client->dev,"%s enter\n", __func__);
-	if (ts == NULL){
-        printk("[elan error]private_ts is NULL~~~");
-    }
-
     return 0;
 }
 
 int elan_iap_release(struct inode *inode, struct file *filp)
 {
     dev_info(&private_ts->client->dev,"%s enter", __func__);
-	//filp->private_data = NULL;
+	filp->private_data = NULL;
 	return 0;
 }
 
@@ -1251,9 +1243,8 @@ static ssize_t elan_iap_write(struct file *filp, const char *buff, size_t count,
 {
     int ret;
     char *tmp;
-	//struct elan_ts_data *ts = (struct elan_ts_data *)filp->private_data;
-
-    struct i2c_client *client= private_ts->client;
+	struct elan_ts_data *ts = (struct elan_ts_data *)filp->private_data;
+    struct i2c_client *client= ts->client;
 
     dev_info(&client->dev,"%s enter", __func__);
     if (count > 8192){
@@ -1271,7 +1262,7 @@ static ssize_t elan_iap_write(struct file *filp, const char *buff, size_t count,
 
     ret = elan_i2c_send(tmp, count);
     if (ret != count){
-        dev_err(&client->dev, "[elan error]elan elan_i2c_send fail, ret=%d \n", ret);
+        dev_err(&client->dev, "[elan]elan elan_i2c_send fail, ret=%d \n", ret);
     }
     
     kfree(tmp);
@@ -1284,7 +1275,8 @@ ssize_t elan_iap_read(struct file *filp, char *buff, size_t count, loff_t *offp)
     char *tmp;
     int ret;
     long rc;
-    struct i2c_client *client = private_ts->client;
+	struct elan_ts_data *ts = (struct elan_ts_data *)filp->private_data;
+    struct i2c_client *client = ts->client;
 
     dev_info(&client->dev, "%s enter", __func__);
 
@@ -1313,16 +1305,10 @@ ssize_t elan_iap_read(struct file *filp, char *buff, size_t count, loff_t *offp)
 static long elan_iap_ioctl( struct file *filp, unsigned int cmd, unsigned long arg)
 {
     int __user *ip = (int __user *)arg;
-	struct elan_ts_data *ts = private_ts; //filp->private_data;
-	struct elan_ts_data *ts1 = (struct elan_ts_data *)filp->private_data;
+	struct elan_ts_data *ts = (struct elan_ts_data *)filp->private_data;
     struct i2c_client *client =  ts->client;
 
     dev_info(&client->dev, "%s enter cmd value %x\n", __func__,cmd);
-	if (!ts1->client)
-		dev_info(&client->dev,"%s filp->private_data counld not get client struct\n", __func__);
-	else
-		dev_info(&client->dev,"%s filp->private_data counld get client struct\n", __func__);
-
 
     switch (cmd) {
         case IOCTL_I2C_SLAVE:

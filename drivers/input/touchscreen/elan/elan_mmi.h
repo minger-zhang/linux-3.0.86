@@ -56,7 +56,7 @@ enum ack_type {
 	ERR_TXOPEN			= -27,
 
 	ERR_TXRXSHORT		= -28,
-
+	ERR_DISABLEREPOR	= -19,
 	ERR_GETRAWDATA	=	-120,
 	ERR_TPMODUINIT	=	-121,	
 

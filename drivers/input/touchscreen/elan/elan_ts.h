@@ -19,8 +19,8 @@
 #include <linux/notifier.h>
 #include <linux/fb.h>
 #endif
-
-
+#include <linux/poll.h>
+#include <linux/wait.h>
 /*fw upgrade fuction switch*/
 #define IAP_PORTION
 
@@ -179,8 +179,11 @@ struct elan_ts_data {
 
 	struct workqueue_struct *elan_wq;	/*for irq handler*/
 	struct work_struct ts_work;
-
 	uint8_t level;
+
+	int int_val;					/*for user space*/
+	int	user_handle_irq;			/*for switch user or kernel handle irq*/
+	wait_queue_head_t elan_userqueue; /*wait queue for user space read data*/
 };
 
 
@@ -290,6 +293,8 @@ enum elan_power_status {
 #define IOCTL_VIAROM	_IOR(ELAN_IOCTLID, 20, int) 
 #define IOCTL_VIAROM_CHECKSUM	_IOW(ELAN_IOCTLID, 21, unsigned long)
 #define IOCTL_GET_UPDATE_PROGREE	_IOR(CUSTOMER_IOCTLID,  2, int)
+#define IOCTL_USER_HANDLE_IRQ	_IOR(ELAN_IOCTLID, 22, int)
+#define IOCTL_KERN_HANDLE_IRQ	_IOR(ELAN_IOCTLID, 23, int)
 #endif
 
 

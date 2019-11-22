@@ -42,10 +42,7 @@ static void elan_ts_late_resume(struct early_suspend *h);
 
 //define private data
 struct elan_ts_data *private_ts;
-//struct workqueue_struct *init_elan_ic_wq;
-//struct delayed_work init_work;
 unsigned long delay = 2*HZ;
-//static DECLARE_WAIT_QUEUE_HEAD(waiter);
 
 /************************key event define**************************/
 static const int key_value[] = {KEY_MENU, KEY_HOMEPAGE, KEY_BACK};
@@ -994,9 +991,15 @@ static void  elan_ts_work_func(struct work_struct *work)
 
 static irqreturn_t elan_ts_irq_handler(int irq, void *dev_id)
 {	
-	struct elan_ts_data *ts = dev_id;	
-	queue_work(ts->elan_wq,&ts->ts_work);
-	return IRQ_HANDLED;
+	struct elan_ts_data *ts = (struct elan_ts_data*)dev_id;
+	if (ts->user_handle_irq) { 
+		wake_up_interruptible(&ts->elan_userqueue);
+		ts->int_val = 0;
+		return IRQ_HANDLED;
+	} else {
+		queue_work(ts->elan_wq,&ts->ts_work);
+		return IRQ_HANDLED;
+	}
 }
 
 static int elan_request_pen_input_dev(struct elan_ts_data *ts)
@@ -1288,7 +1291,12 @@ ssize_t elan_iap_read(struct file *filp, char *buff, size_t count, loff_t *offp)
     if (tmp == NULL){
         return -ENOMEM;
     }
-    
+   
+	if (ts->user_handle_irq) {
+		wait_event_interruptible(ts->elan_userqueue, ts->int_val == 0);
+		ts->int_val = 1;
+	}
+
     ret = elan_i2c_recv(tmp, count);
     if (ret != count){
         dev_err(&client->dev, "[elan error]elan elan_i2c_recv fail, ret=%d \n", ret);
@@ -1332,19 +1340,36 @@ static long elan_iap_ioctl( struct file *filp, unsigned int cmd, unsigned long a
             }
             break;
         case IOCTL_CHECK_RECOVERY_MODE:
-            return private_ts->recover;;
+            return private_ts->recover;
             break;
         case IOCTL_ROUGH_CALIBRATE:
             return elan_ts_calibrate(ts->client);
         case IOCTL_I2C_INT:
             put_user(gpio_get_value(ts->hw_info.intr_gpio), ip);
             break;
+		case IOCTL_USER_HANDLE_IRQ:
+			ts->user_handle_irq = 1;
+			break;
+		case IOCTL_KERN_HANDLE_IRQ:
+			ts->user_handle_irq = 0;
         default:
             break;
     }
     return 0;
 }
 
+static unsigned int elan_iap_poll(struct file *filp, struct poll_table_struct *wait)
+{
+	int mask = 0;
+	struct elan_ts_data *ts = (struct elan_ts_data *)filp->private_data;
+	
+	poll_wait(filp,&ts->elan_userqueue, wait);
+	if (ts->int_val == 0)
+		mask |= POLLIN|POLLRDNORM;
+//	int_val = 1;
+	return mask;
+	
+}
 
 struct file_operations elan_touch_fops = {
     .open			= elan_iap_open,
@@ -1353,6 +1378,7 @@ struct file_operations elan_touch_fops = {
     .release		= elan_iap_release,
     .unlocked_ioctl = elan_iap_ioctl,
     .compat_ioctl	= elan_iap_ioctl,
+	.poll			= elan_iap_poll,
 };
 
 
@@ -1690,7 +1716,7 @@ static int elan_ts_hw_initial(struct elan_ts_data *ts)
   	}
 
 	ts->fw_store_type = FROM_DRIVER_FIRMWARE; //define get fw solution
-
+	ts->user_handle_irq = 0;
 	dev_info(&client->dev, "[elan] rst = %d, int = %d, irq=%d\n",hw_info->rst_gpio, hw_info->intr_gpio,hw_info->irq_num);
 	dev_info(&client->dev, "[elan] lcm_x = %d, lcm_y = %d\n",hw_info->screen_x, hw_info->screen_y);
     
@@ -1815,6 +1841,8 @@ static int elan_ts_probe(struct i2c_client *client,
 	/*set print log level*/
 	ts->level = TP_DEBUG;
 
+	/*initial wait queue for userspace*/
+	init_waitqueue_head(&ts->elan_userqueue);
 	/*lcm callback resume and suspend*/
 #if defined(CONFIG_FB)
 	ts->fb_notif.notifier_call = fb_notifier_callback;
@@ -2134,7 +2162,14 @@ static int __init elan_ts_init(void)
 	 return ret;
 }
 
+static void __exit elan_ts_exit(void)
+{
+	 i2c_del_driver(&elan_ts_driver);
+	 return;
+}
+
 module_init(elan_ts_init);
+module_exit(elan_ts_exit);
 MODULE_DESCRIPTION("ELAN HID-I2C and I2C Touchscreen Driver");
 MODULE_AUTHOR("Minger Zhang <chuming.zhang@elanic.com.cn>");
 MODULE_LICENSE("GPL v2");

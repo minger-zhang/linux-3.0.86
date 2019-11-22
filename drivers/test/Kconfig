@@ -1,0 +1,4 @@
+config MINGER_TEST
+	tristate 'MINGER TEST HAL'
+	default n
+

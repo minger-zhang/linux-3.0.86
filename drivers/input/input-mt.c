@@ -117,8 +117,6 @@ void input_mt_report_slot_state(struct input_dev *dev,
 		return;
 	}
 
-
-
 	mt = &dev->mt[dev->slot];
 	id = input_mt_get_value(mt, ABS_MT_TRACKING_ID);
 	

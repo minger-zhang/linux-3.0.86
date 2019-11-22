@@ -169,4 +169,6 @@ source "drivers/interceptor/Kconfig"
 
 source "drivers/ice4_fpga/Kconfig"
 
+#Add for test hal
+source "drivers/test/Kconfig"
 endmenu
